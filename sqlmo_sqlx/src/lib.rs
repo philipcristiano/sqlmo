@@ -8,6 +8,7 @@ use sqlmo::{Schema, Column, Table, schema};
 
 const QUERY_COLUMNS: &str = include_str!("sql/query_columns.sql");
 const QUERY_TABLES: &str = include_str!("sql/query_tables.sql");
+const QUERY_TABLE_FK_CONSTRAINTS: &str = include_str!("sql/query_table_fk_constraints.sql");
 
 #[async_trait]
 pub trait FromPostgres: Sized {
@@ -48,6 +49,21 @@ async fn query_table_names(conn: &mut PgConnection, schema_name: &str) -> Result
         .fetch_all(conn)
         .await?;
     Ok(result.into_iter().map(|t| t.table_name).collect())
+}
+
+#[derive(sqlx::FromRow)]
+struct TableConstraintSchema {
+    #[allow(dead_code)]
+    pub conname: String,
+    pub definition: String,
+}
+async fn query_table_fk_contraints(conn: &mut PgConnection, schema_name: &str, table_name: &str) -> Result<Vec<TableConstraintSchema>> {
+    let name = format!("{schema_name}.{table_name}");
+    let result = sqlx::query_as::<_, TableConstraintSchema>(QUERY_TABLE_FK_CONSTRAINTS)
+        .bind(name)
+        .fetch_all(conn)
+        .await?;
+    Ok(result)
 }
 
 
@@ -103,12 +119,31 @@ impl FromPostgres for Schema {
             if tables.iter().any(|t| t.name == name) {
                 continue;
             }
-            tables.push(Table {
+            let t = Table {
                 schema: Some(schema_name.to_string()),
                 name,
                 columns: vec![],
                 indexes: vec![],
-            })
+            };
+
+            tables.push(t)
+        }
+
+        for t in tables.clone() {
+            println!("q {:?} {}", &schema_name, t.name.clone());
+            let fk_constraints = query_table_fk_contraints(conn, &schema_name, t.name.clone().as_str()).await?;
+            println!("fk {:?}", fk_constraints.len());
+
+            let dialect = sqlparser::dialect::PostgreSqlDialect {};
+
+            for fkc in fk_constraints {
+                let parser = sqlparser::parser::Parser::new(&dialect);
+                let mut parser = parser.try_with_sql(&fkc.definition)?;
+                let ast = parser.parse_optional_table_constraint()?;
+                println!("{ast:?}")
+
+
+            }
         }
         Ok(Schema { tables })
     }

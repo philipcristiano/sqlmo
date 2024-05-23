@@ -1,6 +1,6 @@
-use crate::{Type, ToSql, Dialect};
 use crate::query::Expr;
 use crate::util::SqlExtension;
+use crate::{Dialect, ToSql, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -11,7 +11,6 @@ pub struct Column {
     pub primary_key: bool,
     pub default: Option<Expr>,
 }
-
 
 impl ToSql for Column {
     fn write_sql(&self, buf: &mut String, dialect: Dialect) {
